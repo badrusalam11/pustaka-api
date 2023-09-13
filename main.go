@@ -1,21 +1,39 @@
 package main
 
 import (
+	"log"
+	"pustaka-api/book"
 	"pustaka-api/dump"
 	"pustaka-api/handler"
+	"pustaka-api/initializers"
+	"pustaka-api/middleware"
+	"pustaka-api/user"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-func main() {
+var db *gorm.DB
 
-	// dsn :=
-	// 	"root:@tcp(127.0.0.1:3306)/pustakaapi?charset=utf8mb4&parseTime=True&loc=Local"
-	// db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	// if err != nil {
-	// 	log.Fatal("db connection error")
-	// }
-	// db.AutoMigrate(book.Book{})
+func init() {
+	var err error
+	initializers.LoadEnvVariables()
+	db, err = initializers.ConnectToDatabase()
+	err = initializers.SyncDatabase(db)
+	if err != nil {
+		log.Fatal("Connection to database failed", err.Error())
+	}
+}
+
+func main() {
+	//book
+	bookRepository := book.NewRepository(db)
+	bookService := book.NewService(bookRepository)
+	bookHandler := handler.NewBookHandler(bookService)
+	//user
+	userRepository := user.NewRepository(db)
+	userService := user.NewService(userRepository)
+	userHandler := handler.NewUserHandler(userService)
 
 	// book := book.Book{}
 	// // Create
@@ -52,13 +70,15 @@ func main() {
 	//route
 	router := gin.Default()
 	routerV1 := router.Group("/v1")
-	routerV1.GET("/", handler.RootHandler)
+	routerV1Books := routerV1.Group("/books", middleware.RequireAuth)
+	routerV1Books.POST("", bookHandler.PostBooksHandler)
+	routerV1Books.GET("", bookHandler.GetBooks)
+	routerV1Books.GET("/:id", bookHandler.GetBook)
+	routerV1Books.PUT("/:id", bookHandler.UpdateBookHandler)
+	routerV1Books.DELETE("/:id", bookHandler.DeleteBook)
 
-	routerV1.GET("/hello", handler.HelloHandler)
-
-	routerV1.GET("/books/:id/:title", handler.BooksHandler)
-	routerV1.GET("/query", handler.QueryHandler)
-	routerV1.POST("/books", handler.PostBooksHandler)
+	routerV1.POST("/signup", userHandler.Signup)
+	routerV1.POST("/login", userHandler.Login)
 	routerV1.GET("/dump", dump.DumpDb)
 
 	router.Run(":3030")
